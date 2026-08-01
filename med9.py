@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Med9 v2.0 - Folder Content Extractor & Tree Viewer
+Med9 v2.1 - Folder Content Extractor & Tree Viewer
 Extracts directory structures and text file contents into organized reports.
 Interactive shell, configurable filters, and batch extraction.
 By Mohamed BOURI
@@ -156,6 +156,40 @@ class Med9Core:
 
         return lines
 
+    def extract_tree_only(
+        self,
+        root_dir: Path,
+        output_file: Optional[Path] = None,
+        ignore_dirs: Optional[Set[str]] = None,
+        ignore_files: Optional[Set[str]] = None,
+    ) -> List[str]:
+        """Extract directory tree only. Returns output lines."""
+        root = root_dir.resolve()
+        if not root.exists() or not root.is_dir():
+            return [f"[!] Directory not found: {root}"]
+
+        ignore_dirs = ignore_dirs or set(self.config.get("ignore_dirs", DEFAULT_IGNORE_DIRS))
+        ignore_files = ignore_files or set(self.config.get("ignore_files", DEFAULT_IGNORE_FILES))
+
+        lines = []
+        lines.append("=" * 80)
+        lines.append(f"DIRECTORY TREE: {root.name}")
+        lines.append(f"Absolute Path: {root}")
+        lines.append(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        lines.append("=" * 80)
+        lines.append("")
+        lines.append(f"{root.name}/")
+        lines.extend(self.generate_tree(root, ignore_dirs, ignore_files))
+        lines.append("")
+        lines.append("=" * 80)
+        lines.append("SUMMARY: Tree extraction complete")
+        lines.append("=" * 80)
+
+        if output_file:
+            output_file.write_text("\n".join(lines), encoding="utf-8")
+
+        return lines
+
     def extract(
         self,
         root_dir: Path,
@@ -289,17 +323,18 @@ class Med9Shell(cmd.Cmd):
     def do_extract(self, arg):
         r"""
         extract <path> [opts]
-        Extract directory tree and file contents to a report.
+        Extract directory tree to a report (default: tree only).
+        Use --content / -c to include file contents.
 
         Options:
+          --content, -c        Include file contents in the report
           --output <file>      Output filename (default: <dirname>_dump.txt)
           --max-size <N>       Max file size in KB (default: from config)
-          --no-content         Tree only, skip file contents
 
         Examples:
           extract .
           extract C:\\Projects\\MyApp --output report.txt
-          extract ~/code --max-size 1000
+          extract ~/code --content --max-size 1000
         """
         if not arg.strip():
             print("[-] Usage: extract <path> [options]")
@@ -313,7 +348,7 @@ class Med9Shell(cmd.Cmd):
 
         output = None
         max_size = None
-        tree_only = "--no-content" in parts
+        include_content = "--content" in parts or "-c" in parts
 
         for i, p in enumerate(parts):
             if p in ("--output", "-o") and i + 1 < len(parts):
@@ -331,20 +366,12 @@ class Med9Shell(cmd.Cmd):
         print(f"[*] Extracting: {target}")
         print(f"[*] Output: {output}")
 
-        if tree_only:
-            lines = []
-            lines.append("=" * 80)
-            lines.append(f"DIRECTORY TREE: {target.name}")
-            lines.append(f"Absolute Path: {target}")
-            lines.append("=" * 80)
-            lines.append("")
-            lines.append(f"{target.name}/")
-            lines.extend(self.core.generate_tree(target))
-            output.write_text("\n".join(lines), encoding="utf-8")
-            print(f"[+] Tree saved to: {output}")
-        else:
+        if include_content:
             count, _ = self.core.extract(target, output, max_size)
             print(f"[+] Extracted {count} files to: {output}")
+        else:
+            self.core.extract_tree_only(target, output)
+            print(f"[+] Tree saved to: {output}")
 
         self.last_output = output
 
@@ -514,9 +541,9 @@ def main():
     # extract command
     extract_parser = subparsers.add_parser("extract", help="Extract folder contents to a report")
     extract_parser.add_argument("path", help="Target directory path")
+    extract_parser.add_argument("-c", "--content", action="store_true", help="Include file contents in the report")
     extract_parser.add_argument("-o", "--output", help="Output file path")
     extract_parser.add_argument("-m", "--max-size", type=int, help="Max file size in KB")
-    extract_parser.add_argument("--no-content", action="store_true", help="Tree only, skip contents")
 
     # tree command
     tree_parser = subparsers.add_parser("tree", help="Show directory tree")
@@ -541,20 +568,12 @@ def main():
         output = Path(args.output).expanduser().resolve() if args.output else Path(f"{target.name}_dump.txt")
         max_size = args.max_size
 
-        if args.no_content:
-            lines = []
-            lines.append("=" * 80)
-            lines.append(f"DIRECTORY TREE: {target.name}")
-            lines.append(f"Absolute Path: {target}")
-            lines.append("=" * 80)
-            lines.append("")
-            lines.append(f"{target.name}/")
-            lines.extend(core.generate_tree(target))
-            output.write_text("\n".join(lines), encoding="utf-8")
-            print(f"[+] Tree saved to: {output}")
-        else:
+        if args.content:
             count, _ = core.extract(target, output, max_size)
             print(f"[+] Extracted {count} files to: {output}")
+        else:
+            core.extract_tree_only(target, output)
+            print(f"[+] Tree saved to: {output}")
 
     elif args.command == "tree":
         target = Path(args.path).expanduser().resolve()
