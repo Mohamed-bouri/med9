@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Med9 v2.0 - Folder Content Extractor & Tree Viewer
+Med9 v2.1 - Folder Content Extractor & Tree Viewer
 Extracts directory structures and text file contents into organized reports.
 Interactive shell, configurable filters, and batch extraction.
 By Mohamed BOURI
@@ -23,7 +23,7 @@ from typing import List, Optional, Set, Tuple
 # Configuration
 # ---------------------------------------------------------------------------
 APP_NAME = "Med9"
-VERSION = "2.0.0"
+VERSION = "2.1.0"
 CONFIG_DIR = Path.home() / ".config" / "med9"
 CONFIG_FILE = CONFIG_DIR / "config.json"
 
@@ -33,7 +33,7 @@ BANNER = r"""
  | |\/| / -_) _` \_, /
  |_|  |_\___\__,_|/_/ 
 
-Folder Content Extractor & Tree Viewer v2.0
+Folder Content Extractor & Tree Viewer v2.1
 By Mohamed BOURI
 
 Type 'help' or '?' to list commands. Type 'exit' to quit.
@@ -41,8 +41,14 @@ Type 'help' or '?' to list commands. Type 'exit' to quit.
 
 PROMPT = "\033[92mMed9>\033[0m "
 
-# Identify running script name dynamically to ignore itself
-CURRENT_SCRIPT_NAME = Path(__file__).name if '__file__' in globals() else ""
+# Detect script path and directory dynamically
+try:
+    SCRIPT_PATH = Path(__file__).resolve()
+    SCRIPT_DIR = SCRIPT_PATH.parent
+    CURRENT_SCRIPT_NAME = SCRIPT_PATH.name
+except NameError:
+    SCRIPT_DIR = Path.cwd()
+    CURRENT_SCRIPT_NAME = ""
 
 # Default filters
 DEFAULT_IGNORE_DIRS = {
@@ -144,7 +150,6 @@ class Med9Core:
         ignore_dirs = ignore_dirs or set(self.config.get("ignore_dirs", DEFAULT_IGNORE_DIRS))
         ignore_files = ignore_files or set(self.config.get("ignore_files", DEFAULT_IGNORE_FILES))
 
-        # Dynamic check to ensure self-file & result.txt are strictly ignored
         if CURRENT_SCRIPT_NAME:
             ignore_files.add(CURRENT_SCRIPT_NAME)
         ignore_files.add("result.txt")
@@ -306,7 +311,7 @@ class Med9Shell(cmd.Cmd):
         super().__init__()
         self.config = ConfigManager()
         self.core = Med9Core(self.config)
-        self.current_dir = Path(".").resolve()
+        self.current_dir = SCRIPT_DIR
         self.last_output: Optional[Path] = None
 
     def _parse_path(self, arg: str) -> Path:
@@ -479,44 +484,46 @@ def main():
     config = ConfigManager()
     core = Med9Core(config)
 
-    # ONE-CLICK DIRECT EXECUTION (When invoked without arguments)
+    # DIRECT CLICK EXECUTION MODE
     if len(sys.argv) == 1:
-        target = Path.cwd()
+        target = SCRIPT_DIR
         output_file = target / "result.txt"
 
         lines = core.extract_tree_only(target, output_file=output_file)
 
-        # Print full tree directly to terminal
+        # Print tree output directly to screen
         for line in lines:
             print(line)
 
-        print(f"\n[+] Full tree printed to terminal and saved to: {output_file}")
+        print(f"\n[+] Output saved next to script at: {output_file}")
+        
+        # Keep window open until user presses Enter
+        try:
+            input("\n[Press Enter to exit / اضغط Enter للخروج]")
+        except (KeyboardInterrupt, EOFError):
+            pass
         return
 
-    # Standard CLI Parser (When arguments or options are provided)
+    # CLI ARGUMENT PARSER
     parser = argparse.ArgumentParser(
         prog="med9",
         description="Med9 - Folder Content Extractor & Tree Viewer",
     )
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
-    # extract command
     extract_parser = subparsers.add_parser("extract", help="Extract folder contents to a report")
     extract_parser.add_argument("path", help="Target directory path")
     extract_parser.add_argument("-c", "--content", action="store_true", help="Include file contents in the report")
     extract_parser.add_argument("-o", "--output", help="Output file path")
     extract_parser.add_argument("-m", "--max-size", type=int, help="Max file size in KB")
 
-    # tree command
     tree_parser = subparsers.add_parser("tree", help="Show directory tree")
     tree_parser.add_argument("path", nargs="?", default=".", help="Target directory path")
 
-    # config command
     config_parser = subparsers.add_parser("config", help="View or edit configuration")
     config_parser.add_argument("key", nargs="?", help="Config key")
     config_parser.add_argument("value", nargs="?", help="Config value")
 
-    # shell command
     subparsers.add_parser("shell", help="Launch interactive Med9 shell")
 
     args = parser.parse_args()
